@@ -16,8 +16,17 @@ The `ImageFeature` class stores the features of an image. The `color_space` meth
 |-----|----------------------------|
 |![cropped_black_car]|![color_space]|
 
+The `hog` method extracts the histogram of oriented gradients from an image
+
+|image|HOG|
+|-----|----------------------------|
+|![cropped_black_car]|![hog]|
+
+
+
 
 [//]: # (Image References)
 [draw_box]: ./output_images/draw_box.jpg "Drawing a box"
 [cropped_black_car]: ./output_images/cropped_black_car.jpg "Black car"
 [color_space]: ./output_images/color_space.jpg "Color space features"
+[hog]: ./output_images/hog.jpg "HOG"
