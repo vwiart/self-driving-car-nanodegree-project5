@@ -23,8 +23,6 @@ The `hog` method extracts the histogram of oriented gradients from an image
 |![cropped_black_car]|![hog]|
 
 
-
-
 [//]: # (Image References)
 [draw_box]: ./output_images/draw_box.jpg "Drawing a box"
 [cropped_black_car]: ./output_images/cropped_black_car.jpg "Black car"

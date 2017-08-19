@@ -1,8 +1,8 @@
-from pipeline.image_features import test_color_space_features
+from pipeline import pipeline
 
 
 def main():
-    test_color_space_features()
+    pipeline.train_classifier()
 
 
 if __name__ == '__main__':
