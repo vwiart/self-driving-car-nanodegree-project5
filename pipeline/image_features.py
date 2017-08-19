@@ -13,14 +13,52 @@ from sklearn.svm import LinearSVC
 
 
 FEATURES_CHECKPOINT = 'data/features.p'
+MODEL_CHECKPOINT = 'data/model.p'
 logging.basicConfig(format='%(asctime)s : %(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
+class ColorSpaceParams(object):
+    """Store the params for the color space features extraction."""
+    def __init__(self, color_space=None, bins=32, range=(0, 256)):
+        self.bins = bins
+        self.range = range
+        self.color_space = color_space
+
+    def get(self):
+        return {
+            'color_space': self.color_space,
+            'bins': self.bins,
+            'range': self.range,
+        }
+
+
+class HOGParams(object):
+    """Store the params for the HOG features extraction."""
+    def __init__(self, orientations=9, pixels_per_cell=(8, 8),
+                 cells_per_block=(2, 2), transform_sqrt=True):
+        self.orientations = orientations
+        self.pixels_per_cell = pixels_per_cell
+        self.cells_per_block = cells_per_block
+        self.transform_sqrt = transform_sqrt
+        self.visualise = False
+        self.feature_vector = True
+
+    def get(self):
+        """get the HOG parameters"""
+        return {
+            'orientations': self.orientations,
+            'pixels_per_cell': self.pixels_per_cell,
+            'cells_per_block': self.cells_per_block,
+            'transform_sqrt': self.transform_sqrt,
+            'visualise': self.visualise,
+            'feature_vector': self.feature_vector,
+        }
+
 class ExtractFeature(threading.Thread):
     """Extract the features from images."""
 
-    def __init__(self, path, nbins=32, bins_range=(0, 256)):
+    def __init__(self, path, hog_params, color_space_params):
         """Initialize the object.
         Args:
             path: directory where the images are located
@@ -29,8 +67,8 @@ class ExtractFeature(threading.Thread):
         """
         self.path = path
         self.features = []
-        self.nbins=nbins
-        self.bins_range=bins_range
+        self.hog_params = hog_params
+        self.color_space_params = color_space_params
         super().__init__()
 
     def _color_space(self, img, color_space=None, size=(32, 32)):
@@ -46,33 +84,22 @@ class ExtractFeature(threading.Thread):
 
         spatial_features = cv2.resize(img, size).ravel()
 
-        histo = lambda d: np.histogram(img[:,:,d],
-                                       bins=self.nbins,
-                                       range=self.bins_range)
+        params = self.color_space_params.get()
+        params.pop('color_space')
+        histo = lambda d: np.histogram(img[:,:,d], **params)
         hist_features = np.concatenate((histo(0)[0],
                                         histo(1)[0],
                                         histo(2)[0]))
         return spatial_features, hist_features
 
-    def _hog(self, img, orientations=9, ppc=(8, 8), cpb=(2, 2)):
-        """Extract the HOG (histogram of Oriented Gradients).
-        Args:
-            img: an image
-            orientations: number of orientations bins
-            ppc: pixels per cell
-            cpb: cells per block
-        """
+    def _hog(self, img):
+        """Extract the HOG (histogram of Oriented Gradients)."""
         img = np.copy(img)
 
         hog_features = []
         for channel in range(img.shape[2]):
-            hf = hog(img[:,:, channel],
-                     orientations=orientations,
-                     pixels_per_cell=ppc,
-                     cells_per_block=cpb, 
-                     transform_sqrt=True,
-                     visualise=False,
-                     feature_vector=True)
+            params = self.hog_params.get()
+            hf = hog(img[:,:, channel], **params)
             hog_features.append(hf)
         return np.ravel(hog_features)
 
@@ -93,26 +120,25 @@ class ExtractFeature(threading.Thread):
 
 class CarClassifier(object):
 
-    def __init__(self, test_size=0.2):
+    def __init__(self, car_images, non_car_images,
+                 hog_params=None, color_space_params=None, test_size=0.2):
         self.classifier = LinearSVC()
+        self.car_images = car_images
+        self.non_car_images = non_car_images
+        self.hog_params = hog_params if hog_params else HOGParams()
+        self.color_space_params = color_space_params if color_space_params else ColorSpaceParams()
         self.test_size = test_size
-        self.car_features = None
-        self.non_car_features = None
-        self.x_train = None
-        self.y_train = None
-        self.x_test = None
-        self.y_test = None
     
-    def process_data(self, car_images, non_car_images):
+    def _process_data(self):
         if os.path.exists(FEATURES_CHECKPOINT):
             logger.debug('[process_data] Loading features from checkpoint')
             with open(FEATURES_CHECKPOINT, mode='rb') as f:
                 self.car_features, self.non_car_features = pickle.load(f)
                 return 
-        car_thread = ExtractFeature(car_images)
+        car_thread = ExtractFeature(self.car_images, self.hog_params, self.color_space_params)
         car_thread.start()
 
-        other_thread = ExtractFeature(non_car_images)
+        other_thread = ExtractFeature(self.non_car_images, self.hog_params, self.color_space_params)
         other_thread.start()
 
         car_thread.join()
@@ -124,7 +150,13 @@ class CarClassifier(object):
             pickle.dump((self.car_features, self.non_car_features), f)
 
     def train(self):
-        logger.debug('[Training]')
+        if os.path.exists(MODEL_CHECKPOINT):
+            logger.debug('[train] Loading model from checkpoint')
+            with open(MODEL_CHECKPOINT, mode='rb') as f:
+                self.classifier = pickle.load(f)
+                return
+        self._process_data()
+        logger.debug('[train] training...')
         # Scaling data
         x = np.vstack((self.car_features, self.non_car_features)).astype(np.float64)
         x_scaler = StandardScaler().fit(x)
@@ -140,6 +172,10 @@ class CarClassifier(object):
         # Split dataset
         self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(scaled_x, y, **options)
         self.classifier.fit(self.x_train, self.y_train)
-    
-    def accuracy(self):
-        return self.classifier.score(self.x_test, self.y_test)
+
+        accurracy = self.classifier.score(self.x_test, self.y_test)
+        logger.debug('[train] Accuracy = %s' % accurracy)
+
+        with open(MODEL_CHECKPOINT, mode='wb') as f:
+            logger.debug('[train] Dumping model')
+            pickle.dump(self.classifier, f)
