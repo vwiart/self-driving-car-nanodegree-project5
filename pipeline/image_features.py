@@ -104,6 +104,7 @@ class ExtractFeature(threading.Thread):
         return np.ravel(hog_features)
 
     def _extract(self, filename):
+        """Extract the features of an image."""
         img = cv2.imread(filename, cv2.IMREAD_COLOR)
         spatial_features, hist_features = self._color_space(img)
         hog_features = self._hog(img)
@@ -111,6 +112,7 @@ class ExtractFeature(threading.Thread):
         return np.concatenate((spatial_features, hist_features, hog_features))
 
     def run(self):
+        """Loop over a set of image and extract features for each of them."""
         logger.debug('[run] Extracting features for path %s' % self.path)
         images = glob(self.path)
         for filename in images:
@@ -130,6 +132,7 @@ class CarClassifier(object):
         self.test_size = test_size
     
     def _process_data(self):
+        """Load images and extract the features from them"""
         if os.path.exists(FEATURES_CHECKPOINT):
             logger.debug('[process_data] Loading features from checkpoint')
             with open(FEATURES_CHECKPOINT, mode='rb') as f:
@@ -150,6 +153,7 @@ class CarClassifier(object):
             pickle.dump((self.car_features, self.non_car_features), f)
 
     def train(self):
+        """Train the model with a set of cars and non cars."""
         if os.path.exists(MODEL_CHECKPOINT):
             logger.debug('[train] Loading model from checkpoint')
             with open(MODEL_CHECKPOINT, mode='rb') as f:
@@ -169,12 +173,11 @@ class CarClassifier(object):
             'random_state': np.random.randint(0, 100)
         }
 
-        # Split dataset
         self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(scaled_x, y, **options)
         self.classifier.fit(self.x_train, self.y_train)
 
-        accurracy = self.classifier.score(self.x_test, self.y_test)
-        logger.debug('[train] Accuracy = %s' % accurracy)
+        accuracy = self.classifier.score(self.x_test, self.y_test)
+        logger.debug('[train] accuracy = %s' % accuracy)
 
         with open(MODEL_CHECKPOINT, mode='wb') as f:
             logger.debug('[train] Dumping model')
