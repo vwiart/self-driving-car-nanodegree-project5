@@ -1,7 +1,9 @@
-import cv2
 import numpy as np
 
-from pipeline.image_features import ColorSpaceParams, ExtractFeatures, HOGParams
+import cv2
+from pipeline.extract_features import ExtractFeatures
+from pipeline.hog import HOG
+from pipeline.color_space import ColorSpace
 
 class Point(object):
 
@@ -38,25 +40,45 @@ class Box(object):
 
 class Window(object):
 
-    def __init__(self, img, clf):
+    def __init__(self, img, clf,
+                 width=16, height=16,
+                 hog=None, color_space=None):
         self.img = img
         self.classifier = clf
+        self.hog = hog if hog else HOG()
+        self.color_space = color_space if color_space else ColorSpace()
+        self.width = width
+        self.height = height
 
     def classify(self, top_left, bottom_right):
         box = Box(top_left, bottom_right, border=2)
         crop = box.crop(self.img)
 
-        hog_params = HOGParams()
-        color_space_params = ColorSpaceParams()
-        feat_extractor = ExtractFeatures(hog_params, color_space_params)
-        features = feat_extractor.extract(crop)
+        color_space = ColorSpace()
+        feat_extractor = ExtractFeatures(self.hog, color_space)
+        # features = feat_extractor.extract(img=crop, box=box)
+        features = extract_features(crop, self.color_space, self.hog)
+
         is_car = self.classifier.predict(features)
-        color = (0, 255, 0) if is_car else (0, 0, 255)
-        self.img = box.draw(self.img, color)
+        if is_car:
+            self.img = box.draw(self.img, color=(0, 255, 0))
 
     def slide(self):
-        print(self.img.shape)
-        self.classify(Point(0, 0), Point(64, 64))
-        self.classify(Point(832, 384), Point(896, 448))
-        
+        h, w, _ = self.img.shape
+        box = Box(Point(0, h//2), Point(w, h))
+        self.img = box.crop(self.img)
+        max_height, max_width, _ = self.img.shape
+
+        width = max_width//self.width
+        height = max_height// self.height
+
+        self.hog.process(self.img)
+        for x in range(width):
+            for y in range(height):
+                top_left = Point(x * self.width, y * self.height)
+                bottom_right = Point(x * self.width + 64, y * self.height + 64)
+                if bottom_right.x > max_width or bottom_right.y > max_height:
+                    continue
+                self.classify(top_left, bottom_right)
+
         return self.img
