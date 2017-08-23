@@ -99,7 +99,7 @@ class Process(object):
 
             bbox = ((np.min(non_zero_x), np.min(non_zero_y)),
                     (np.max(non_zero_x), np.max(non_zero_y)))
-            cv2.rectangle(img, bbox[0], bbox[1], (0, 255, 0), 2)
+            cv2.rectangle(img, bbox[0], bbox[1], (255, 0, 0), 2)
         return img
 
     def apply_threshold(self, heatmap):
